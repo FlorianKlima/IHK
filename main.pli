@@ -1,0 +1,82 @@
+ /* WAPTRA3: WAP Transfer
+ /*********************************************************************/
+ /*
+ /* Module-Type: DB2PGM
+ /* Author: Klima, Florian
+ /* Purpose: Transfer of WAP Data
+ /* Modifications:
+ /*
+ /*********************************************************************/
+ 
+ WAPTRA3:
+    PROC OPTIONS(MAIN);
+
+ %INCLUDE STDOS;
+ %INCLUDE STDPLI;
+
+ /*********************************************************************/
+ /* Externe UPROS
+ /*********************************************************************/
+ 
+ %INCLUDE GETXSCV;
+ %INCLUDE PUTXCSV;
+
+ /*********************************************************************/
+ /* Declaration of major data structure
+ /*********************************************************************/
+ 
+ DCL    EINGABE    RECORD INPUT;
+ DCL    EOF        BOOL(FALSE);
+ DCL    SATZ       CHAR(1000) VAR INIT('');
+ DCL    PROT       RECORD OUTPUT ENV(RECSIZE(1000) VB BLKSIZE(0))
+ 
+ %page;
+ 
+ /*********************************************************************/
+ /* XDEF
+ /*********************************************************************/
+ 
+ EXEC XDEF CSV_STRUK
+            ,MOTORBEZEICHNUNG   CHAR(15)
+            ,GESCHAEFTSEINHEIT  CHAR(8)
+            ,GUELTIGAB          CHAR(10)
+            ,GUETLTIGBIS        CHAR(10)
+            ,ZUSCHLAGART        CHAR(8)
+            ,ZUSCHLAG_WERT      DEC FIXED(9,2)
+            ,ANGELEGT_VON       CHAR(8)
+            ,ANGELEGT_DATE      CHAR(26)
+            ,UPDATE_VON         CHAR(8)
+            ,UPDATE_DATE        CHAR(26)
+            ,BEMERKUNG          VARCHAR(100)
+            ;
+
+ DCL    P_ZUSCHLAG_WERT     PIC'ZZZZZZ9V,99';
+
+ /*********************************************************************/
+ /* DB2 Declare
+ /*********************************************************************/
+ 
+ %INCLUDE ACCEPT;
+
+ DCL    NULLO   BIN FIXED(15) INIT(0);
+ DCL    I_1     BIN FIXED(15) INIT(0);
+ DCL    I_2     BIN FIXED(15) INIT(0);
+
+ EXEC SQL INCLUDE SQLCA;
+ EXEC SQL INCLUDE WPA001;
+ EXEC SQL INCLUDE WPA004;
+
+ /*********************************************************************/
+ /* Inititalisierung & On-Units
+ /*********************************************************************/
+ 
+    ON ENDFILE(EINGABE)
+        EOF = TRUE;
+ 
+ /*********************************************************************/
+ /* Main
+ /*********************************************************************/
+ 
+
+ call initialize;
+ %page;

@@ -1,0 +1,356 @@
+ /*                                     KC21BN3  V=18.01.2022 P2123   */00000100
+ /*                                                                     00000200
+    PROGRAMM-NAME: KC21BN3                                              00000300
+    PROGRAMM-TYP : DB2PGM                                               00000400
+    PROGRAMMIERER: P1106                                                00000500
+                                                                        00000600
+    FUNKTION     :                                                      00000700
+                                                                        00000800
+    HISTORIE     : 21.12.2021/P1106  -  NEUANLAGE                       00000900
+                   18.01.2022/P2123  -  ERWEITERUNG UM WAP004           00001000
+                                                                        00001100
+ */                                                                     00001200
+                                                                        00001300
+ KC21BN3:                                                               00001400
+    PROC OPTIONS(MAIN);                                                 00001500
+                                                                        00001600
+ %INCLUDE STDOS;                                                        00001700
+                                                                        00001800
+ %INCLUDE STDPLI;                                                       00001900
+                                                                        00002000
+ /* EXTERNE UPROS */                                                    00002100
+                                                                        00002200
+ %INCLUDE GETXCSV;                                                      00002300
+ %INCLUDE PUTXCSV;                                                      00002400
+                                                                        00002500
+ /* FILES */                                                            00002600
+                                                                        00002700
+ DCL  EINGABE RECORD INPUT;                                             00002800
+ DCL  EOF     BOOL(FALSE);                                              00002900
+ DCL  SATZ    CHAR(1000) VAR INIT('');                                  00003000
+                                                                        00003100
+ DCL  PROT    RECORD OUTPUT ENV(RECSIZE(1000) VB BLKSIZE(0));           00003200
+                                                                        00003300
+ /* XDEF'S */                                                           00003400
+                                                                        00003500
+ EXEC XDEF CSV_STRUK                                                    00003600
+          ,MOTORBEZEICHNUNG  CHAR(15)                                   00003700
+          ,GESCHAEFTSEINHEIT CHAR(8)                                    00003800
+          ,GUELTIGAB         CHAR(10)                                   00003900
+          ,GUELTIGBIS        CHAR(10)                                   00004000
+          ,ZUSCHLAG_ART      CHAR(8)                                    00004100
+          ,ZUSCHLAG_WERT     DEC FIXED(9,2)                             00004200
+          ,ANGELEGT_VON      CHAR(8)                                    00004300
+          ,ANGELEGT_DATE     CHAR(26)                                   00004400
+          ,UPDATE_VON        CHAR(8)                                    00004500
+          ,UPDATE_DATE       CHAR(26)                                   00004600
+          ,BEMERKUNG      VARCHAR(100)                                  00004700
+          ;                                                             00004800
+ DCL P_ZUSCHLAG_WERT     PIC'ZZZZZZ9V,99';                              00004900
+                                                                        00005900
+ /* DB2-DECLARE */                                                      00006000
+                                                                        00006100
+ %INCLUDE ACCEPT;                                                       00006200
+                                                                        00006300
+ DCL  NULLO BIN FIXED(15) INIT(0);                                      00006400
+ DCL  I_1   BIN FIXED(15) INIT(0);                                      00006501
+ DCL  I_2   BIN FIXED(15) INIT(0);                                      00006601
+                                                                        00006701
+ EXEC SQL INCLUDE SQLCA;                                                00006801
+                                                                        00006901
+ EXEC SQL INCLUDE VWAP001;                                              00007001
+ EXEC SQL INCLUDE VWAP004;                                              00007101
+                                                                        00007201
+ /* INITIALISIERUNG & ON-UNITS */                                       00007301
+                                                                        00007401
+      ON ENDFILE(EINGABE)                                               00007501
+         EOF = TRUE;                                                    00007601
+                                                                        00007701
+ /* ABLAUF */                                                           00007801
+                                                                        00007901
+      PUT SKIP LIST('KC21BN3 ANFANG');                                  00008001
+                                                                        00008101
+      OPEN FILE(EINGABE),                                               00008201
+           FILE(PROT);                                                  00008301
+                                                                        00008401
+      READ FILE(EINGABE) INTO(SATZ);                                    00008501
+                                                                        00008601
+      IF EOF THEN                                                       00008701
+         DO;                                                            00008801
+            PUT SKIP LIST('KC21BN3 ENDE, EINGABE LEER');                00008901
+            RETURN;                                                     00009001
+         END;                                                           00009101
+                                                                        00009201
+      CALL GETXCSV('H',';',CSV_STRUK_XDEF,SATZ);                        00009301
+                                                                        00009401
+      READ FILE(EINGABE) INTO(SATZ);                                    00009501
+                                                                        00009601
+      IF EOF THEN                                                       00009701
+         DO;                                                            00009801
+            PUT SKIP LIST('KC21BN3 ENDE, EINGABE LEER');                00009901
+            RETURN;                                                     00010001
+         END;                                                           00010101
+                                                                        00010201
+      DO WHILE(¬EOF);                                                   00010301
+                                                                        00010400
+         CALL GETXCSV('D',';',CSV_STRUK_XDEF,SATZ);                     00010500
+                                                                        00011500
+         IF SATZ_OK() THEN DO;                                          00011601
+            CALL UPDATE_WAP001;                                         00011701
+            CALL UPDATE_WAP004;                                         00011801
+         END;                                                           00011901
+                                                                        00012001
+         CALL PUTXCSV('D',';',CSV_STRUK_XDEF,SATZ);                     00012101
+                                                                        00012700
+         WRITE FILE(PROT) FROM(SATZ);                                   00012800
+                                                                        00012900
+         READ FILE(EINGABE) INTO(SATZ);                                 00013000
+                                                                        00013100
+      END;                                                              00013200
+                                                                        00013300
+      CLOSE FILE(EINGABE),                                              00013400
+            FILE(PROT);                                                 00013500
+                                                                        00013600
+      PUT SKIP LIST('KC21BN3 ENDE');                                    00013700
+                                                                        00013800
+ SATZ_OK:                                                               00013900
+    PROC RETURNS(BOOL);                                                 00014000
+                                                                        00014100
+ DCL  RETBIT BOOL(TRUE);                                                00014200
+                                                                        00014300
+ /* MOTORBEZEICHNUNG  PRÜFEN */                                         00014400
+                                                                        00014500
+      IF CSV_STRUK.MOTORBEZEICHNUNG = '' THEN                           00014600
+         CALL SET_FEHLER('MOTORBEZEICHNUNG FEHLT');                     00014700
+                                                                        00015100
+ /* GESCHAEFTSEINHEIT PRÜFEN */                                         00015200
+                                                                        00015300
+      IF CSV_STRUK.GESCHAEFTSEINHEIT = '' THEN                          00015400
+         CALL SET_FEHLER('GESCHAEFTSEINHEIT FEHLT');                    00015500
+                                                                        00015600
+ /* GUELTIGAB         PRÜFEN */                                         00015700
+                                                                        00015800
+      IF CSV_STRUK.GUELTIGAB = '' THEN                                  00015900
+         CALL SET_FEHLER('GUELTIGAB FEHLT');                            00016000
+      ELSE                                                              00016100
+      IF ¬VALIDDATE(CSV_STRUK.GUELTIGAB,'DD.MM.YYYY') THEN              00016300
+         CALL SET_FEHLER('GUELTIGAB UNGÜLTIG');                         00016400
+                                                                        00016500
+                                                                        00016600
+ /* GUELTIGBIS        PRÜFEN */                                         00016700
+                                                                        00016800
+      IF CSV_STRUK.GUELTIGBIS = '' THEN                                 00016900
+         CALL SET_FEHLER('GUELTIGBIS FEHLT');                           00017000
+      ELSE                                                              00017100
+      IF ¬VALIDDATE(CSV_STRUK.GUELTIGBIS,'DD.MM.YYYY') THEN             00017200
+         CALL SET_FEHLER('GUELTIGBIS UNGÜLTIG');                        00017300
+                                                                        00017400
+ /* IST AB > BIS */                                                     00017500
+                                                                        00017600
+      IF RETBIT THEN                                                    00017700
+         IF DAYS(CSV_STRUK.GUELTIGAB ,'DD.MM.YYYY')                     00017800
+          > DAYS(CSV_STRUK.GUELTIGBIS,'DD.MM.YYYY') THEN                00017900
+            CALL SET_FEHLER('GUELTIGBIS < GÜLTIGAB');                   00018000
+                                                                        00018100
+ /* ZUSCHLAG_ART      PRÜFEN */                                         00018200
+                                                                        00018300
+      IF CSV_STRUK.ZUSCHLAG_ART = '' THEN                               00018400
+         CALL SET_FEHLER('ZUSCHLAG_ART FEHLT');                         00018500
+                                                                        00018600
+ /* ZUSCHLAG_WERT     PRÜFEN */                                         00018700
+                                                                        00018800
+      IF CSV_STRUK.ZUSCHLAG_WERT = '' THEN                              00019400
+         CALL SET_FEHLER('ZUSCHLAG_WERT NICHT NUMERISCH ODER 0');       00019500
+                                                                        00019600
+      RETURN(RETBIT);                                                   00019700
+                                                                        00019800
+ SET_FEHLER:                                                            00019900
+    PROC(TEXT);                                                         00020000
+                                                                        00020100
+ DCL  TEXT CHAR(*);                                                     00020200
+                                                                        00020300
+      CSV_STRUK.BEMERKUNG !!= TEXT!!' ';                                00020400
+                                                                        00020500
+      RETBIT = FALSE;                                                   00020600
+                                                                        00020700
+ END SET_FEHLER;                                                        00020800
+                                                                        00020900
+ END SATZ_OK;                                                           00021000
+                                                                        00021100
+ /* UPDATE_WAP001 : DATEI IN DIE VWAP001 SCHREIBEN */                   00021201
+                                                                        00021300
+ UPDATE_WAP001:                                                         00021401
+    PROC;                                                               00021601
+                                                                        00021701
+      ACCEPT (+100);                                                    00021801
+                                                                        00021901
+      EXEC SQL SELECT MOTORBEZEICHNUNG                                  00022001
+                     ,GESCHAEFTSEINHEIT                                 00022101
+                     ,GUELTIGAB                                         00022201
+                     ,GUELTIGBIS                                        00022301
+                     ,ZUSCHLAG_ART                                      00022401
+                     ,ZUSCHLAG_WERT                                     00022501
+                     ,ANGELEGT_VON                                      00022601
+                     ,ANGELEGT_DATE                                     00022701
+                     ,UPDATE_VON                                        00022801
+                     ,UPDATE_DATE                                       00022901
+                 INTO :VWAP001.MOTORBEZEICHNUNG                         00023001
+                     ,:VWAP001.GESCHAEFTSEINHEIT                        00023101
+                     ,:VWAP001.GUELTIGAB                                00023201
+                     ,:VWAP001.GUELTIGBIS                               00023301
+                     ,:VWAP001.ZUSCHLAG_ART                             00023401
+                     ,:VWAP001.ZUSCHLAG_WERT                            00023501
+                     ,:VWAP001.ANGELEGT_VON                             00023601
+                     ,:VWAP001.ANGELEGT_DATE                            00023701
+                     ,:VWAP001.UPDATE_VON  :I_1                         00023807
+                     ,:VWAP001.UPDATE_DATE :I_2                         00023907
+                 FROM KOSY.VWAP001                                      00024001
+                WHERE MOTORBEZEICHNUNG  = :CSV_STRUK.MOTORBEZEICHNUNG   00024101
+                  AND GESCHAEFTSEINHEIT = :CSV_STRUK.GESCHAEFTSEINHEIT  00024201
+                  AND GUELTIGAB         = :CSV_STRUK.GUELTIGAB          00024301
+                  AND GUELTIGBIS        = :CSV_STRUK.GUELTIGBIS         00024401
+                  AND ZUSCHLAG_ART      = :CSV_STRUK.ZUSCHLAG_ART       00024501
+                    ;                                                   00024601
+                                                                        00024701
+      IF SQLCODE = 0 THEN                                               00024801
+         DO;                                                            00024901
+                                                                        00025001
+            I_1 = 0;                                                    00025107
+            I_2 = 0;                                                    00025207
+                                                                        00025307
+            CSV_STRUK.UPDATE_VON    = 'KC21BN3';                        00025407
+            CSV_STRUK.UPDATE_DATE   = TIMESTAMP();                      00025507
+                                                                        00025607
+            EXEC SQL UPDATE KOSY.VWAP001                                00025707
+                        SET ZUSCHLAG_WERT = :CSV_STRUK.ZUSCHLAG_WERT    00025807
+                           ,UPDATE_VON    =                             00025907
+                                :CSV_STRUK.UPDATE_VON :I_1              00026007
+                           ,UPDATE_DATE   =                             00026107
+                                :CSV_STRUK.UPDATE_DATE :I_2             00026207
+                                                                        00026307
+                  WHERE MOTORBEZEICHNUNG  = :CSV_STRUK.MOTORBEZEICHNUNG 00026407
+                    AND GESCHAEFTSEINHEIT = :CSV_STRUK.GESCHAEFTSEINHEIT00026507
+                    AND GUELTIGAB         = :CSV_STRUK.GUELTIGAB        00026607
+                    AND GUELTIGBIS        = :CSV_STRUK.GUELTIGBIS       00026707
+                    AND ZUSCHLAG_ART      = :CSV_STRUK.ZUSCHLAG_ART     00026807
+                      ;                                                 00026907
+            CSV_STRUK.BEMERKUNG = 'SATZ ERFOLGREICH GEÄNDERT';          00027007
+         END;                                                           00027107
+      ELSE                                                              00027207
+         DO;                                                            00027307
+                                                                        00027407
+            CSV_STRUK.ANGELEGT_VON  = 'KC21BN3';                        00027507
+            CSV_STRUK.ANGELEGT_DATE = TIMESTAMP();                      00027607
+            VWAP001.MOTORBEZEICHNUNG  = CSV_STRUK.MOTORBEZEICHNUNG;     00027707
+            VWAP001.GESCHAEFTSEINHEIT = CSV_STRUK.GESCHAEFTSEINHEIT;    00027807
+            VWAP001.GUELTIGAB         = CSV_STRUK.GUELTIGAB;            00027907
+            VWAP001.GUELTIGBIS        = CSV_STRUK.GUELTIGBIS;           00028007
+            VWAP001.ZUSCHLAG_ART      = CSV_STRUK.ZUSCHLAG_ART;         00028107
+            VWAP001.ZUSCHLAG_WERT     = CSV_STRUK.ZUSCHLAG_WERT;        00028207
+                                                                        00028307
+            ACCEPT (-803);                                              00028407
+                                                                        00028507
+            EXEC SQL INSERT                                             00028607
+                       INTO KOSY.VWAP001                                00028707
+                           (MOTORBEZEICHNUNG                            00028807
+                           ,GESCHAEFTSEINHEIT                           00028907
+                           ,GUELTIGAB                                   00029007
+                           ,GUELTIGBIS                                  00029107
+                           ,ZUSCHLAG_ART                                00029207
+                           ,ZUSCHLAG_WERT                               00029307
+                           ,ANGELEGT_VON                                00029407
+                           ,ANGELEGT_DATE                               00029507
+                           )                                            00029607
+                     VALUES(:VWAP001.MOTORBEZEICHNUNG                   00029707
+                           ,:VWAP001.GESCHAEFTSEINHEIT                  00029807
+                           ,:VWAP001.GUELTIGAB                          00029907
+                           ,:VWAP001.GUELTIGBIS                         00030007
+                           ,:VWAP001.ZUSCHLAG_ART                       00030107
+                           ,:VWAP001.ZUSCHLAG_WERT                      00030207
+                           ,:CSV_STRUK.ANGELEGT_VON                     00030307
+                           ,:CSV_STRUK.ANGELEGT_DATE                    00030407
+                           );                                           00030507
+            IF SQLCODE = 0 THEN                                         00030607
+            CSV_STRUK.BEMERKUNG = 'SATZ ERFOLGREICH EINGEFÜGT';         00030707
+            ELSE CSV_STRUK.BEMERKUNG = 'SATZ EINFUEGEN NICHT GUT';      00030807
+         END;                                                           00030907
+ END UPDATE_WAP001;                                                     00031007
+                                                                        00031107
+ UPDATE_WAP004:                                                         00031207
+    PROC;                                                               00031307
+                                                                        00031407
+      ACCEPT (+100);                                                    00031507
+                                                                        00031607
+      EXEC SQL SELECT MOTORBEZEICHNUNG                                  00031707
+                     ,GUELTIGAB                                         00031807
+                     ,GUELTIGBIS                                        00031907
+                     ,MOTORBESCHREIBUNG                                 00032007
+                     ,ANGELEGT_VON                                      00032107
+                     ,ANGELEGT_DATE                                     00032207
+                     ,UPDATE_VON                                        00032307
+                     ,UPDATE_DATE                                       00032407
+                     ,WAPBASIS                                          00032507
+                 INTO :VWAP004.MOTORBEZEICHNUNG                         00032607
+                     ,:VWAP004.GUELTIGAB                                00032707
+                     ,:VWAP004.GUELTIGBIS                               00032807
+                     ,:VWAP004.MOTORBESCHREIBUNG                        00032907
+                     ,:VWAP004.ANGELEGT_VON                             00033007
+                     ,:VWAP004.ANGELEGT_DATE                            00033107
+                     ,:VWAP004.UPDATE_VON  :I_1                         00033207
+                     ,:VWAP004.UPDATE_DATE :I_2                         00033307
+                     ,:VWAP004.WAPBASIS                                 00033407
+                 FROM KOSY.VWAP004                                      00033507
+                WHERE MOTORBEZEICHNUNG  = :CSV_STRUK.MOTORBEZEICHNUNG   00033607
+                  AND GUELTIGBIS       >= CURRENT DATE                  00033801
+                    ;                                                   00034001
+                                                                        00034101
+      IF SQLCODE = 0 THEN DO;                                           00034201
+         CSV_STRUK.BEMERKUNG !!= ', WAP004 SCHON VORHANDEN';            00034308
+      END;                                                              00034501
+      ELSE DO;                                                          00034601
+                                                                        00034709
+         VWAP004.MOTORBEZEICHNUNG  = CSV_STRUK.MOTORBEZEICHNUNG;        00034901
+         VWAP004.GUELTIGAB         = CSV_STRUK.GUELTIGAB;               00035001
+         VWAP004.GUELTIGBIS        = '31.12.2299';                      00035101
+         VWAP004.MOTORBESCHREIBUNG = CSV_STRUK.MOTORBEZEICHNUNG;        00035201
+         VWAP004.ANGELEGT_VON      = 'KC21BN3' ;                        00035301
+         VWAP004.WAPBASIS          = 'WAK+I';                           00035401
+         I_1 = -1;                                                      00035504
+         I_2 = -1;                                                      00035604
+                                                                        00035704
+         ACCEPT (-803);                                                 00035804
+                                                                        00035904
+         EXEC SQL INSERT                                                00036006
+                    INTO KOSY.VWAP004                                   00036104
+                        (MOTORBEZEICHNUNG                               00036204
+                        ,GUELTIGAB                                      00036304
+                        ,GUELTIGBIS                                     00036404
+                        ,MOTORBESCHREIBUNG                              00036504
+                        ,ANGELEGT_VON                                   00036604
+                        ,ANGELEGT_DATE                                  00036704
+                        ,UPDATE_VON                                     00036804
+                        ,UPDATE_DATE                                    00036904
+                        ,WAPBASIS                                       00037004
+                        )                                               00037104
+                  VALUES(:VWAP004.MOTORBEZEICHNUNG                      00037204
+                        ,:VWAP004.GUELTIGAB                             00037304
+                        ,:VWAP004.GUELTIGBIS                            00037404
+                        ,:VWAP004.MOTORBESCHREIBUNG                     00037504
+                        ,:VWAP004.ANGELEGT_VON                          00037604
+                        ,CURRENT TIMESTAMP                              00037704
+                        ,:VWAP004.UPDATE_VON  :I_1                      00037804
+                        ,:VWAP004.UPDATE_DATE :I_2                      00037904
+                        ,:VWAP004.WAPBASIS                              00038004
+                        );                                              00038104
+                                                                        00038206
+         IF SQLCODE = 0 THEN DO;                                        00038304
+           CSV_STRUK.BEMERKUNG !!= ', WAP004 WURDE EINGEFUEGT';         00038409
+         END;                                                           00038604
+         ELSE DO;                                                       00038704
+           CSV_STRUK.BEMERKUNG !!= ', WAP004 NICHT EINGEFUEGT';         00038809
+         END;                                                           00039004
+                                                                        00039106
+      END;                                                              00039204
+ END UPDATE_WAP004;                                                     00039304
+                                                                        00039404
+ END KC21BN3;                                                           00040000
